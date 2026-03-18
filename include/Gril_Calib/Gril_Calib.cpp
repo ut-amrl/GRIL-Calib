@@ -39,15 +39,24 @@ Gril_Calib::Gril_Calib()
 Gril_Calib::~Gril_Calib() = default;
 
 void Gril_Calib::set_IMU_state(const deque<CalibState> &IMU_states) {
+    IMU_state_group.clear();
+    if (IMU_states.size() < 2) {
+        return;
+    }
     IMU_state_group.assign(IMU_states.begin(), IMU_states.end() - 1);
 }
 
 void Gril_Calib::set_Lidar_state(const deque<CalibState> &Lidar_states) {
+    Lidar_state_group.clear();
+    if (Lidar_states.size() < 2) {
+        return;
+    }
     Lidar_state_group.assign(Lidar_states.begin(), Lidar_states.end() - 1);
 }
 
 void Gril_Calib::set_states_2nd_filter(const deque<CalibState> &IMU_states, const deque<CalibState> &Lidar_states) {
-    for (int i = 0; i < IMU_state_group.size(); i++) {
+    int n = std::min<int>(IMU_state_group.size(), std::min<int>(IMU_states.size(), Lidar_states.size()));
+    for (int i = 0; i < n; i++) {
         IMU_state_group[i].ang_acc = IMU_states[i].ang_acc;
         Lidar_state_group[i].ang_acc = Lidar_states[i].ang_acc;
         Lidar_state_group[i].linear_acc = Lidar_states[i].linear_acc;
@@ -117,11 +126,14 @@ void Gril_Calib::push_Plane_Constraint(const Eigen::Quaterniond &q_lidar, const 
 }
 
 void Gril_Calib::downsample_interpolate_IMU(const double &move_start_time) {
-
-    while (IMU_state_group_ALL.front().timeStamp < move_start_time - 3.0)
+    while (!IMU_state_group_ALL.empty() && IMU_state_group_ALL.front().timeStamp < move_start_time - 3.0)
         IMU_state_group_ALL.pop_front();
-    while (Lidar_state_group.front().timeStamp < move_start_time - 3.0)
+    while (!Lidar_state_group.empty() && Lidar_state_group.front().timeStamp < move_start_time - 3.0)
         Lidar_state_group.pop_front();
+
+    if (IMU_state_group_ALL.size() < 2 || Lidar_state_group.empty()) {
+        return;
+    }
 
     // Original IMU measurements
     deque<CalibState> IMU_states_all_origin;
@@ -197,7 +209,18 @@ void Gril_Calib::central_diff() {
 
 // Temporal calibration by Cross-Correlation : calculate time_lag_1
 void Gril_Calib::xcorr_temporal_init(const double &odom_freq) {
-    int N = IMU_state_group.size();
+    int N = std::min<int>(IMU_state_group.size(), Lidar_state_group.size());
+    if (N < 3 || odom_freq <= 0.0) {
+        lag_IMU_wtr_Lidar = 0;
+        time_lag_1 = 0.0;
+        cout << "Max Cross-correlation: IMU lag wtr Lidar : " << 0 << endl;
+        cout << "Time lag 1: IMU lag wtr Lidar : " << 0.0 << endl;
+        return;
+    }
+
+    // Avoid implausible large lag estimates that collapse alignment.
+    const int max_lag_samples = std::max(1, std::min(N - 1, static_cast<int>(odom_freq * 3.0)));
+
     //Calculate mean value of IMU and LiDAR angular velocity
     double mean_IMU_ang_vel = 0, mean_LiDAR_ang_vel = 0;
     for (int i = 0; i < N; i++) {
@@ -207,7 +230,7 @@ void Gril_Calib::xcorr_temporal_init(const double &odom_freq) {
 
     //Calculate zero-centered cross correlation
     double max_corr = -DBL_MAX;
-    for (int lag = -N + 1; lag < N; lag++) {
+    for (int lag = -max_lag_samples; lag <= max_lag_samples; lag++) {
         double corr = 0;
         int cnt = 0;
         for (int i = 0; i < N; i++) {
@@ -219,6 +242,9 @@ void Gril_Calib::xcorr_temporal_init(const double &odom_freq) {
                 corr += (IMU_state_group[i].ang_vel.norm() - mean_IMU_ang_vel) *
                         (Lidar_state_group[j].ang_vel.norm() - mean_LiDAR_ang_vel);  // Zero-centered cross correlation
             }
+        }
+        if (cnt == 0) {
+            continue;
         }
 
         if (corr > max_corr) {
@@ -236,23 +262,35 @@ void Gril_Calib::IMU_time_compensate(const double &lag_time, const bool &is_disc
     if (is_discard) {
         // Discard first 10 Lidar estimations and corresponding IMU measurements due to long time interval
         int i = 0;
-        while (i < 10) {
+        while (i < 10 && !Lidar_state_group.empty() && !IMU_state_group.empty()) {
             Lidar_state_group.pop_front();
             IMU_state_group.pop_front();
             i++;
         }
     }
 
+    if (IMU_state_group.empty() || Lidar_state_group.empty()) {
+        return;
+    }
+
     auto it_IMU_state = IMU_state_group.begin();
-    for (; it_IMU_state != IMU_state_group.end() - 1; it_IMU_state++) {
+    for (; it_IMU_state != IMU_state_group.end(); it_IMU_state++) {
         it_IMU_state->timeStamp = it_IMU_state->timeStamp - lag_time;
     }
 
-    while (Lidar_state_group.front().timeStamp < IMU_state_group.front().timeStamp)
+    while (!Lidar_state_group.empty() && !IMU_state_group.empty() &&
+           Lidar_state_group.front().timeStamp < IMU_state_group.front().timeStamp) {
         Lidar_state_group.pop_front();  
+    }
 
-    while (Lidar_state_group.front().timeStamp > IMU_state_group[1].timeStamp)
+    while (!Lidar_state_group.empty() && IMU_state_group.size() > 1 &&
+           Lidar_state_group.front().timeStamp > IMU_state_group[1].timeStamp) {
         IMU_state_group.pop_front();   
+    }
+
+    if (IMU_state_group.empty() || Lidar_state_group.empty()) {
+        return;
+    }
 
     // align the size of two sequences
     while (IMU_state_group.size() > Lidar_state_group.size())
@@ -262,14 +300,20 @@ void Gril_Calib::IMU_time_compensate(const double &lag_time, const bool &is_disc
 }
 
 void Gril_Calib::cut_sequence_tail() {
-    for (int i = 0; i < 20; ++i) {
+    for (int i = 0; i < 20 && !Lidar_state_group.empty() && !IMU_state_group.empty(); ++i) {
         Lidar_state_group.pop_back();
         IMU_state_group.pop_back();
     }
-    while (Lidar_state_group.front().timeStamp < IMU_state_group.front().timeStamp)
+    while (!Lidar_state_group.empty() && !IMU_state_group.empty() &&
+           Lidar_state_group.front().timeStamp < IMU_state_group.front().timeStamp)
         Lidar_state_group.pop_front();
-    while (Lidar_state_group.front().timeStamp > IMU_state_group[1].timeStamp)
+    while (!Lidar_state_group.empty() && IMU_state_group.size() > 1 &&
+           Lidar_state_group.front().timeStamp > IMU_state_group[1].timeStamp)
         IMU_state_group.pop_front();
+
+    if (IMU_state_group.empty() || Lidar_state_group.empty()) {
+        return;
+    }
 
     //Align the size of two sequences
     while (IMU_state_group.size() > Lidar_state_group.size())
@@ -279,6 +323,9 @@ void Gril_Calib::cut_sequence_tail() {
 }
 
 void Gril_Calib::acc_interpolate() {
+    if (IMU_state_group.size() < 3 || Lidar_state_group.size() < 3) {
+        return;
+    }
     //Interpolation to get acc_I(t_L)
     for (int i = 1; i < Lidar_state_group.size() - 1; i++) {
         double deltaT = Lidar_state_group[i].timeStamp - IMU_state_group[i].timeStamp;
@@ -703,9 +750,17 @@ void Gril_Calib::LI_Calibration(int &orig_odom_freq, int &cut_frame_num, double 
     set_IMU_state(IMU_after_zero_phase);
     set_Lidar_state(Lidar_after_zero_phase);
     cut_sequence_tail(); 
+    if (IMU_state_group.size() < 3 || Lidar_state_group.size() < 3) {
+        cout << "[calibration] Not enough synchronized IMU/LiDAR data after filtering." << endl;
+        return;
+    }
 
     xcorr_temporal_init(orig_odom_freq * cut_frame_num);
     IMU_time_compensate(get_lag_time_1(), false);
+    if (IMU_state_group.size() < 3 || Lidar_state_group.size() < 3) {
+        cout << "[calibration] Time compensation removed too many samples; skipping calibration update." << endl;
+        return;
+    }
 
 
     central_diff(); 
@@ -723,6 +778,10 @@ void Gril_Calib::LI_Calibration(int &orig_odom_freq, int &cut_frame_num, double 
     acc_interpolate();
     align_Group(IMU_state_group, Lidar_wrt_ground_group, IMU_wrt_ground_group,
                 normal_vector_wrt_lidar_group, distance_Lidar_wrt_ground_group);
+    if (IMU_state_group.empty() || Lidar_state_group.empty() || Lidar_wrt_ground_group.empty()) {
+        cout << "[calibration] Insufficient aligned states for optimization." << endl;
+        return;
+    }
 
     // Calibration at once
     solve_Rot_Trans_calib(timediff_imu_wrt_lidar, imu_sensor_height);

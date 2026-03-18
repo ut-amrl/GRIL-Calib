@@ -573,6 +573,17 @@ bool sync_packages(MeasureGroup &meas) {
         meas.imu.push_back(imu_buffer.front());
         imu_buffer.pop_front();
     }
+
+    // Guard against a package that has LiDAR data but no IMU samples.
+    // This can happen with timestamp compensation or startup transients.
+    // Skip this LiDAR frame instead of returning an invalid package.
+    if (meas.imu.empty()) {
+        lidar_buffer.pop_front();
+        time_buffer.pop_front();
+        lidar_pushed = false;
+        return false;
+    }
+
     lidar_buffer.pop_front();
     time_buffer.pop_front();
     lidar_pushed = false;
@@ -1059,6 +1070,11 @@ private:
     //*** main functions ***//
     void timer_callback() {
         if (sync_packages(Measures)) {
+            if (Measures.imu.empty()) {
+                RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                                     "Skipping package: empty IMU batch.");
+                return;
+            }
             if (flg_reset) {
                 std::cerr << "reset when rosbag play back." << std::endl;
                 p_imu->Reset();

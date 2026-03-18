@@ -18,7 +18,7 @@ def generate_launch_description():
     max_iteration_param = LaunchConfiguration('max_iteration', default='3')                       # int
     cube_side_length_param = LaunchConfiguration('cube_side_length', default='1000.0')            # double
 
-    default_config_path = os.path.join(package_path, 'config', 'velodyne32.yaml')
+    default_config_path = os.path.join(package_path, 'config', 'velodyne16_spot.yaml')
     default_rviz_config_path = os.path.join(
         package_path, 'rviz_cfg', 'velodyne.rviz')
 
