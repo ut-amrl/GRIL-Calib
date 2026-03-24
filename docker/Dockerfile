@@ -156,7 +156,7 @@ RUN rosdep init && \
 
 # Install PCL & Eigen & essential libraries
 RUN apt-get update && apt-get install -y cmake libatlas-base-dev libeigen3-dev libpcl-dev libgoogle-glog-dev libsuitesparse-dev libglew-dev wget unzip git python3-pip
-RUN apt-get install -y ros-humble-tf2 ros-humble-cv-bridge ros-humble-pcl-conversions ros-humble-xacro ros-humble-robot-state-publisher \
+RUN apt-get update && apt-get install -y ros-humble-tf2 ros-humble-cv-bridge ros-humble-pcl-conversions ros-humble-xacro ros-humble-robot-state-publisher \
     ros-humble-rviz2 ros-humble-image-transport ros-humble-image-transport-plugins ros-humble-pcl-ros \
     ros-humble-ament-cmake-auto
 
@@ -184,7 +184,11 @@ RUN cmake .. && make -j2 && make install
 WORKDIR /root/ros2_livox_ws/src
 RUN git clone https://github.com/Livox-SDK/livox_ros_driver2.git
 WORKDIR /root/ros2_livox_ws/src/livox_ros_driver2
-
+RUN ./build.sh humble
+RUN cd /root/ros2_ws/ && \
+    source /opt/ros/humble/setup.bash && \
+    colcon build --symlink-install && \
+    source install/setup.bash
 
 WORKDIR /root/ros2_ws
 

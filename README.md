@@ -10,6 +10,28 @@ Official implementation of our paper **"GRIL-Calib: Targetless Ground Robot IMU-
 - **GRIL-Calib** is the LiDAR-IMU calibration method for ground robots.
 - Using only **planar motion**, the 6-DOF calibration parameter could be estimated.
 
+## AMRL Modifcations
+
+### Build and run docker container
+```bash
+./container build
+./container shell
+```
+
+### Build and run GRIL-Calib
+```bash
+cd /root/ros2_ws/
+colcon build --symlink-install
+source install/setup.bash
+```
+
+### Run GRIL-Calib
+
+The following command will run GRIL-Calib with the spot velodyne 16 LiDAR. Modify the config file to suit your environment.
+```bash
+ros2 launch gril_calib mapping_velodyne.launch.py config_path:=/root/ros2_ws/config/velodyne16_spot.yaml
+```
+
 ## 🚀 ROS2 Support  
 
 If you want to use ROS2 version, check out `humble` branch.  
