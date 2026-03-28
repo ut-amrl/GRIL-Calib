@@ -2,7 +2,7 @@
     ros__parameters:
         common:
             lid_topic:  "/velodyne_points"
-            imu_topic:  "/imu" 
+            imu_topic:  "/vectornav/imu_uncompensated" 
 
         preprocess:
             lidar_type: 2                # Velodyne LiDAR

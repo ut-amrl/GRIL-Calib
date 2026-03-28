@@ -162,7 +162,7 @@ VALID_MOUNT_DATA=""
 
 # We will iterate through the original lines again to be safe and clear
 MOUNT_DATA=""
-while read -r line; do
+while IFS= read -r line || [ -n "$line" ]; do
     # Skip Jetson-specific mounts if not on Jetson
     if [ "$ISJETSON" -eq 0 ]; then
         if [[ "$line" == *"tegra"* ]] || \
@@ -204,7 +204,7 @@ while read -r line; do
 done < "$ROOT/config/mounts"
 
 PORT_DATA=""
-while read -r line; do
+while IFS= read -r line || [ -n "$line" ]; do
     PORT_DATA="${PORT_DATA} $(eval echo -e "$line")"
 done < "$ROOT/config/ports"
 
@@ -418,11 +418,18 @@ dockerstop() {
   fi
 }
 dockershell() {
-  docker exec -it $RUNNING_CONTAINER $EXEC
+  docker exec -it $RUNNING_CONTAINER /bin/bash -lc \
+    "source /opt/ros/humble/setup.bash; \
+     if [ -f /root/ros2_livox_ws/install/setup.bash ]; then source /root/ros2_livox_ws/install/setup.bash; fi; \
+     exec /bin/bash -i"
 }
 dockercmd() {
   RUNNING_CONTAINER=$(docker container ls -q --filter name=$CONTAINER_NAME)
-  docker exec -it $RUNNING_CONTAINER /bin/bash -l -c "$@"
+  local user_cmd="$1"
+  docker exec -it $RUNNING_CONTAINER /bin/bash -lc \
+    "source /opt/ros/humble/setup.bash; \
+     if [ -f /root/ros2_livox_ws/install/setup.bash ]; then source /root/ros2_livox_ws/install/setup.bash; fi; \
+     ${user_cmd}"
 }
 dockerpush() {
   local source_image="$CONTAINER_NAME"

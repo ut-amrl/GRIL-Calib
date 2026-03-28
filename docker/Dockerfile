@@ -184,11 +184,14 @@ RUN cmake .. && make -j2 && make install
 WORKDIR /root/ros2_livox_ws/src
 RUN git clone https://github.com/Livox-SDK/livox_ros_driver2.git
 WORKDIR /root/ros2_livox_ws/src/livox_ros_driver2
-RUN ./build.sh humble
-RUN cd /root/ros2_ws/ && \
-    source /opt/ros/humble/setup.bash && \
-    colcon build --symlink-install && \
-    source install/setup.bash
+RUN bash -lc "source /opt/ros/${ros_distro}/setup.bash && \
+    ./build.sh humble && \
+    source /root/ros2_livox_ws/install/setup.bash && \
+    ros2 pkg prefix livox_ros_driver2"
+# WORKDIR /root/ros2_ws/
+# RUN source /opt/ros/humble/setup.bash && \
+#     colcon build --symlink-install && \
+#     source install/setup.bash
 
 WORKDIR /root/ros2_ws
 

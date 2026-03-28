@@ -30,6 +30,7 @@ docker run --privileged -it \
            --volume="$PROJECT_DIR:/root/ros2_ws/src" \
            --volume=/data/LIDAR_dataset:/root/data \
            --volume=/tmp/.X11-unix:/tmp/.X11-unix:rw \
+           --volume=/spot_logs:/spot_logs \
            --net=host \
            --ipc=host \
            --shm-size=4gb \
